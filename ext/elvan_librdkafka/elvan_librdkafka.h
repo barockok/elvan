@@ -1,0 +1,9 @@
+#include <string.h>
+#include <stdlib.h>
+#include <sys/time.h>
+#include <ctype.h>
+#include <errno.h>
+#include <syslog.h>
+#include <assert.h>
+#include "ruby.h"
+#include "librdkafka/rdkafka.h"

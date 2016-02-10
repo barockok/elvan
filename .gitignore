@@ -1,0 +1,13 @@
+/.bundle/
+/.yardoc
+/Gemfile.lock
+/_yardoc/
+/coverage/
+/doc/
+/pkg/
+/spec/reports/
+/tmp/
+.DS_Store
+ext/elvan_librdkafka/Makefile
+ext/elvan_librdkafka/ports
+ext/elvan_librdkafka/tmp
