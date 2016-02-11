@@ -11,12 +11,12 @@ module Elvan
     end
 
     def consume &block
-      trap("SIGINT"){shutdown!}
-      @internal.on_message &block
+      trap("SIGINT"){consume_stop!}
+      @internal.consume &block
     end
 
-    def shutdown!
-      @internal.stop!
+    def consume_stop!
+      @internal.consume_stop!
     end
   end
 end
