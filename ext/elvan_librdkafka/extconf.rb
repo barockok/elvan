@@ -3,15 +3,16 @@ require 'mkmf'
 require 'mini_portile'
 require 'digest/md5'
 
-RbConfig::MAKEFILE_CONFIG['CC'] = ENV['CC'] if ENV['CC']
-
+# RbConfig::MAKEFILE_CONFIG['CC'] = ENV['CC'] if ENV['CC']
+#
 LIBDIR      = RbConfig::CONFIG['libdir']
 INCLUDEDIR  = RbConfig::CONFIG['includedir']
-BASE_DIR = File.expand_path(File.dirname(__FILE__) + '/../../')
-
-puts "Library Dir: #{LIBDIR}\n"
-puts "Include Dir: #{INCLUDEDIR}"
-
+# BASE_DIR = File.expand_path(File.dirname(__FILE__) + '/../../')
+#
+#
+# puts "Library Dir: #{LIBDIR}\n"
+# puts "Include Dir: #{INCLUDEDIR}"
+#
 ################################################################################
 #   MiniPortile overrides
 ################################################################################
@@ -142,16 +143,16 @@ unless File.exists?(checkpoint)
 end
 
 librdkafka.activate
-
 HEADER_DIRS = [INCLUDEDIR, File.join(librdkafka.path, 'include')]
 LIB_DIRS = [LIBDIR]
-dir_config('rdkafka', HEADER_DIRS, LIB_DIRS)
+
+# dir_config('rdkafka', HEADER_DIRS, LIB_DIRS)
 
 # Tell mkmf to staticallly link our mini_portile generated static library,
 # courtesty of:
 #   <http://blog.zachallett.com/howto-ruby-c-extension-with-a-static-library>
-$LOCAL_LIBS << File.join(librdkafka.path, 'lib', 'librdkafka.a')
-
+# puts $LOCAL_LIBS
+$LOCAL_LIBS << File.join(librdkafka.path, 'lib', 'librdkafka.dylib')
 
 have_header('ruby/thread.h')
 have_header('ruby/intern.h')

@@ -1,6 +1,10 @@
 #include "elvan_librdkafka.h"
 
 static VALUE elvan_module;
+static 	enum {
+    OUTPUT_HEXDUMP,
+    OUTPUT_RAW,
+} output = OUTPUT_HEXDUMP;
 #define ELVAN_MAX_ERRSTR_LEN 512
 
 // Should we expect rb_thread_blocking_region to be present?
@@ -31,6 +35,43 @@ typedef struct {
     char *error;
 } Elvan_Config_t;
 
+static void hexdump(FILE *fp,
+                    const char *name,
+                    const void *ptr,
+                    size_t len) {
+    const char *p = (const char *)ptr;
+    unsigned int of = 0;
+
+
+    if (name) {
+        fprintf(fp, "%s hexdump (%zd bytes):\n", name, len);
+    }
+
+    for (of = 0 ; of < len ; of += 16) {
+        char hexen[16*3+1];
+        char charen[16+1];
+        unsigned int hof = 0;
+
+        unsigned int cof = 0;
+        unsigned int i;
+
+        for (i = of ; i < of + 16 && i < len ; i++) {
+            hof += sprintf(hexen+hof, "%02x ", p[i] & 0xff);
+            cof += sprintf(charen+cof, "%c",
+                           isprint((int)p[i]) ? p[i] : '.');
+        }
+        fprintf(fp, "%08x: %-48s %-16s\n",
+                of, hexen, charen);
+    }
+}
+
+
+void rb_puts(char *string){
+    ID sym_puts = rb_intern("puts");
+    // Call puts, from Kernel
+    rb_funcall(rb_mKernel, sym_puts, 1, rb_str_new2(string));
+}
+
 static void logger(const rd_kafka_t *rk,
                    int level,
                    const char *fac,
@@ -41,6 +82,38 @@ static void logger(const rd_kafka_t *rk,
             (int)tv.tv_sec, (int)(tv.tv_usec / 1000),
             level, fac, rd_kafka_name(rk), buf);
 }
+static void print_partition_list (FILE *fp, int is_assigned,
+                                  const rd_kafka_topic_partition_list_t
+                                  *partitions, Elvan_Config_t* conf) {
+    int i;
+    for (i = 0 ; i < partitions->cnt ; i++) {
+        fprintf(stderr, "%s %s [%"PRId32"] %lld",
+                i > 0 ? ",":"",
+                partitions->elems[i].topic,
+                partitions->elems[i].partition,
+                partitions->elems[i].offset
+                );
+
+        if (is_assigned)
+            conf->wait_eof++ ;
+        else {
+            if (conf->exit_eof && --conf->wait_eof == 0)
+                conf->running = 0;
+        }
+    }
+    fprintf(stderr, "\n");
+}
+static void *consumer_recv_msg(void *ptr)
+{
+    Elvan_Config_t *conf = (Elvan_Config_t *) ptr;
+    rd_kafka_message_t *rkmessage = rd_kafka_consumer_poll(conf->rd_kafka_inst, 500);
+    if ( rkmessage == NULL ) {
+        if ( errno != ETIMEDOUT )
+            fprintf(stderr, "%% Error: %s\n", rd_kafka_err2str( rd_kafka_errno2err(errno)));
+    }
+    return (void *) rkmessage;
+}
+
 char** str_split(char* a_str, const char a_delim)
 {
     char** result    = 0;
@@ -88,64 +161,65 @@ char** str_split(char* a_str, const char a_delim)
 
     return result;
 }
+void parse_initialTopic_to_partition_list(Elvan_Config_t* conf){
+    if(!conf->initialTopics)
+        return ;
 
+    conf->topicPartitionList = rd_kafka_topic_partition_list_new(1);
+
+    for (int i = 0; *(conf->initialTopics + i); i++)
+    {
+        char *topic_name = strdup(*(conf->initialTopics + i));
+        rd_kafka_topic_partition_list_add(conf->topicPartitionList, topic_name, -1);
+    }
+
+    rd_kafka_resp_err_t err;
+
+    err = rd_kafka_position(conf->rd_kafka_inst, conf->topicPartitionList, 1000);
+
+    if (err) {
+        rb_raise(rb_eRuntimeError, "%% Failed to fetch offsets: %s\n", rd_kafka_err2str(err));
+    }else{
+        print_partition_list(stderr, 1, conf->topicPartitionList, conf);
+    }
+}
 void kafka_consumer_init(Elvan_Config_t* conf){
-
     conf->rd_kafka_conf = rd_kafka_conf_new();
+
     rd_kafka_conf_set_opaque(conf->rd_kafka_conf, (void*)conf);
-
-    if (!(conf->rd_kafka_inst = rd_kafka_new(RD_KAFKA_CONSUMER, conf->rd_kafka_conf,
-                                             conf->errstr, sizeof(conf->errstr)))) {
-        fprintf(stderr, "%% Failed to create new kafka consumer: %s\n", conf->errstr);
-        rb_raise(rb_eRuntimeError, "%% Failed to create new kafka consumer: %s\n", conf->errstr);
-    }
-
-
-
-    /* Set logger */
-    rd_kafka_conf_set_log_cb(conf->rd_kafka_conf, logger);
-    rd_kafka_set_log_level(conf->rd_kafka_inst, LOG_DEBUG);
-
-    if (conf->topicPartitionList == NULL){
-        rb_raise(rb_eRuntimeError, "TopicPartitionList can't be empty\n");
-    }
 
     if (rd_kafka_conf_set(conf->rd_kafka_conf, "group.id", conf->group_id,
                           conf->errstr, sizeof(conf->errstr)) != RD_KAFKA_CONF_OK) {
-        fprintf(stderr, "%% %s\n", conf->errstr);
         rb_raise(rb_eRuntimeError, "%% %s\n", conf->errstr);
 
     }
 
     if (rd_kafka_conf_set(conf->rd_kafka_conf, "bootstrap.servers", conf->brokers,
                           conf->errstr, sizeof(conf->errstr)) != RD_KAFKA_CONF_OK) {
-        fprintf(stderr, "%% %s\n", conf->errstr);
         rb_raise(rb_eRuntimeError, "%% %s\n", conf->errstr);
 
     }
 
+    /* Set logger */
+    rd_kafka_conf_set_log_cb(conf->rd_kafka_conf, logger);
+
+    if (!(conf->rd_kafka_inst = rd_kafka_new(RD_KAFKA_CONSUMER, conf->rd_kafka_conf,
+                                             conf->errstr, sizeof(conf->errstr)))) {
+        rb_raise(rb_eRuntimeError, "%% Failed to create new kafka consumer: %s\n", conf->errstr);
+    }
+
+    rd_kafka_set_log_level(conf->rd_kafka_inst, LOG_DEBUG);
+
+    parse_initialTopic_to_partition_list(conf);
+
+    if (conf->topicPartitionList == NULL){
+        rb_raise(rb_eRuntimeError, "TopicPartitionList can't be empty\n");
+    }
+    rd_kafka_poll_set_consumer(conf->rd_kafka_inst);
+
     conf->isInitialized = 1;
 }
-static void print_partition_list (FILE *fp, int is_assigned,
-                                  const rd_kafka_topic_partition_list_t
-                                  *partitions, Elvan_Config_t* conf) {
-    int i;
-    for (i = 0 ; i < partitions->cnt ; i++) {
-        fprintf(stderr, "%s %s [%"PRId32"]",
-                i > 0 ? ",":"",
-                partitions->elems[i].topic,
-                partitions->elems[i].partition);
 
-        if (is_assigned)
-            conf->wait_eof++ ;
-        else {
-            if (conf->exit_eof && --conf->wait_eof == 0)
-                conf->running = 0;
-        }
-    }
-    fprintf(stderr, "\n");
-
-}
 
 static void rebalance_cb (rd_kafka_t *rk,
                           rd_kafka_resp_err_t err,
@@ -225,27 +299,28 @@ static VALUE elvan_initialize(VALUE self,
                               VALUE brokers,
                               VALUE initialTopic,
                               VALUE group_id,
+                              VALUE exit_eof,
                               VALUE is_silent){
 
     Elvan_Config_t *conf;
-    char* brokersPtr;
-    char* group_idPtr;
-    char* initialTopicPtr;
-    int is_silentInt;
+    char *brokersPtr, *group_idPtr, *initialTopicPtr;
+    int exit_eof_int, is_silentInt;
 
-    brokersPtr   = StringValuePtr(brokers);
-    group_idPtr  = StringValuePtr(group_id);
+    brokersPtr      = StringValuePtr(brokers);
+    group_idPtr     = StringValuePtr(group_id);
     initialTopicPtr = StringValuePtr(initialTopic);
-    is_silentInt = FIX2INT(is_silent);
+    is_silentInt    = FIX2INT(is_silent);
+    exit_eof_int    = FIX2INT(exit_eof);
 
     Data_Get_Struct(self, Elvan_Config_t, conf);
 
-    conf->brokers  = strdup(brokersPtr);
-    conf->group_id = strdup(group_idPtr);
-    conf->silent   = is_silentInt;
-
+    conf->brokers       = strdup(brokersPtr);
+    conf->group_id      = strdup(group_idPtr);
+    conf->silent        = is_silentInt;
     conf->initialTopics = str_split(initialTopicPtr, ',');
-
+    conf->running       = 1;
+    conf->exit_eof      = exit_eof_int || 0;
+    conf->wait_eof      = 0;
     return self;
 }
 
@@ -259,7 +334,7 @@ static void msg_consume(rd_kafka_message_t *rkmessage, Elvan_Config_t *conf){
                         rd_kafka_topic_name(rkmessage->rkt),
                         rkmessage->partition, rkmessage->offset);
 
-                conf->running = 0;
+//                conf->running = 0;
             }
 
             return;
@@ -274,7 +349,7 @@ static void msg_consume(rd_kafka_message_t *rkmessage, Elvan_Config_t *conf){
         return;
     }
 
-//    if (DEBUG && rkmessage->key_len) {
+//    if (1 && rkmessage->key_len) {
 //        if (output == OUTPUT_HEXDUMP) {
 //            hexdump(stdout, "Message Key",
 //                    rkmessage->key, rkmessage->key_len);
@@ -284,14 +359,14 @@ static void msg_consume(rd_kafka_message_t *rkmessage, Elvan_Config_t *conf){
 //                   (int)rkmessage->key_len, (char *)rkmessage->key);
 //        }
 //    }
-
+//
 //    if (output == OUTPUT_HEXDUMP) {
-//        if (DEBUG) {
+//        if (1) {
 //            hexdump(stdout, "Message Payload", rkmessage->payload, rkmessage->len);
 //        }
 //    }
 //    else {
-//        if (DEBUG) {
+//        if (1) {
 //            printf("%.*s\n", (int)rkmessage->len, (char *)rkmessage->payload);
 //        }
 //    }
@@ -313,41 +388,63 @@ static void msg_consume(rd_kafka_message_t *rkmessage, Elvan_Config_t *conf){
         rb_yield_values(3, data, key, offset);
     }
     else {
-      fprintf(stderr, "No block given\n"); // todo: should this be an error?
+        rb_raise(rb_eArgError, "no block given" );
     }
 
 }
-
-static VALUE elvan_consumer_loop(VALUE self){
-    Elvan_Config_t* conf;
-    Data_Get_Struct(self, Elvan_Config_t, conf);
-
-    while (conf->running) {
-        rd_kafka_message_t *rkmessage = rd_kafka_consumer_poll(conf->rd_kafka_inst, 500);
-        if (rkmessage) {
-            msg_consume(rkmessage, conf);
-        }
-    }
-    return self;
-}
-
-
-static VALUE elvan_consumer_loop_stop(VALUE self, int attempt){
+static VALUE elvan_consumer_loop_stop(VALUE self){
     Elvan_Config_t* conf;
     rd_kafka_resp_err_t rd_err;
 
     Data_Get_Struct(self, Elvan_Config_t, conf);
 
     rd_err = rd_kafka_consumer_close(conf->rd_kafka_inst);
-    if (rd_err)
-        fprintf(stderr, "%% Failed to close consumer: %s\n", rd_kafka_err2str(rd_err));
-    else
+    if (rd_err){
+        rb_raise(rb_eRuntimeError, "%% Failed to close consumer: %s\n", rd_kafka_err2str(rd_err));
+        return Qnil;
+    }else
         fprintf(stderr, "%% Consumer closed\n");
 
-    if(5>=attempt){
-        elvan_consumer_loop_stop(self, attempt+1);
+    return Qnil;
+}
+
+static void elvan_consumer_stop_cb(void *ptr) {
+    Elvan_Config_t* conf = (Elvan_Config_t*)ptr;
+    conf->running = 0;
+}
+
+static VALUE elvan_consumer_loop(VALUE self){
+
+    Elvan_Config_t* conf;
+    rd_kafka_message_t *rkmessage;
+    Data_Get_Struct(self, Elvan_Config_t, conf);
+
+    while (conf->running) {
+#if HAVE_RB_THREAD_BLOCKING_REGION && RUBY_API_VERSION_MAJOR < 2
+        rkmessage = (rd_kafka_message_t *) rb_thread_blocking_region((rb_blocking_function_t *) consumer_recv_msg,
+                                                               conf,
+                                                               elvan_consumer_stop_cb,
+                                                               conf);
+#elif HAVE_RB_THREAD_CALL_WITHOUT_GVL
+        rkmessage = rb_thread_call_without_gvl(consumer_recv_msg,
+                                         conf,
+                                         elvan_consumer_stop_cb,
+                                         conf);
+#else
+        rkmessage = consumer_recv_msg(conf);
+#endif
+        if (rkmessage)
+            msg_consume(rkmessage, conf);
+   
     }
     return Qnil;
+}
+
+static VALUE elvan_stop(VALUE self){
+    Elvan_Config_t* conf;
+    Data_Get_Struct(self, Elvan_Config_t, conf);
+    conf->running = 0;
+    return self;
 }
 
 static VALUE elvan_consume(VALUE self){
@@ -355,7 +452,6 @@ static VALUE elvan_consume(VALUE self){
     rd_kafka_resp_err_t rd_err;
 
     Data_Get_Struct(self, Elvan_Config_t, conf);
-
     if(!conf->isInitialized){
         kafka_consumer_init(conf);
     }
@@ -365,8 +461,10 @@ static VALUE elvan_consume(VALUE self){
             fprintf(stderr,
                     "%% Failed to start consuming topics: %s\n",
                     rd_kafka_err2str(rd_err));
-            rb_raise(rb_eRuntimeError, "Failed to start consuming topic");
+            rb_raise(rb_eRuntimeError, "Failed to start consuming topic %s", conf->group_id);
             return Qnil;
+        }else{
+            conf->subscribed = 1;
         }
     }else{
         if((rd_err = rd_kafka_assign(conf->rd_kafka_inst, conf->topicPartitionList))){
@@ -378,8 +476,6 @@ static VALUE elvan_consume(VALUE self){
 
         };
     }
-
-
     return rb_ensure(elvan_consumer_loop, self, elvan_consumer_loop_stop, self);
 }
 
@@ -390,6 +486,7 @@ void Init_elvan_librdkafka() {
     consumer_klass = rb_define_class_under(rd_kafka_module, "Consumer", rb_cObject);
 
     rb_define_alloc_func(consumer_klass, elvan_consumer_allocate);
-    rb_define_method(consumer_klass, "initialize", elvan_initialize, 4);
+    rb_define_method(consumer_klass, "initialize", elvan_initialize, 5);
     rb_define_method(consumer_klass, "on_message", elvan_consume, 0);
+    rb_define_method(consumer_klass, "stop", elvan_stop, 0);
 }

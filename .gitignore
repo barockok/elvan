@@ -11,3 +11,4 @@
 ext/elvan_librdkafka/Makefile
 ext/elvan_librdkafka/ports
 ext/elvan_librdkafka/tmp
+ext/elvan_librdkafka/mkmf.log
