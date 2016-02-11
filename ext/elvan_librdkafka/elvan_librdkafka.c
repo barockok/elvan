@@ -488,5 +488,5 @@ void Init_elvan_librdkafka() {
     rb_define_alloc_func(consumer_klass, elvan_consumer_allocate);
     rb_define_method(consumer_klass, "initialize", elvan_initialize, 5);
     rb_define_method(consumer_klass, "on_message", elvan_consume, 0);
-    rb_define_method(consumer_klass, "stop", elvan_stop, 0);
+    rb_define_method(consumer_klass, "stop!", elvan_stop, 0);
 }
