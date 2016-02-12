@@ -33,13 +33,8 @@ typedef struct {
 
 
 // Utility Methods
-static void sig_usr1 (int sig) {
-	rd_kafka_dump(stdout, rd_kafka_inst);
-}
-
 static void stop (int sig) {
 	running = 0;
-	fclose(stdin); /* abort fgets() */
 }
 
 static void logger(const rd_kafka_t *rk,
@@ -288,7 +283,8 @@ static VALUE helper__consumer_loop_stop(VALUE self){
         return Qnil;
     }else
         fprintf(stderr, "%% Consumer closed\n");
-
+    
+    rd_kafka_consumer_close(rd_kafka_inst);
     running = 0;
     conf->subscribed = 0;
 
@@ -362,7 +358,6 @@ static VALUE elvan_consumer_allocate(VALUE klass) {
     obj = Data_Wrap_Struct(klass, 0, elvan_consumer_free, conf);
 
     signal(SIGINT, stop);
-  	signal(SIGUSR1, sig_usr1);
     return obj;
 }
 static VALUE elvan_initialize(VALUE self,

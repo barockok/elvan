@@ -11,7 +11,6 @@ module Elvan
     end
 
     def consume &block
-      trap("SIGINT"){consume_stop!}
       @internal.consume &block
     end
 
