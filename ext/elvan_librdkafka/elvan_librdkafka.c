@@ -298,7 +298,8 @@ static VALUE helper__consumer_loop_stop(VALUE self){
     if(rd_err){
         rb_raise(rb_eRuntimeError, "%% Failed to close consumer: %s\n", rd_kafka_err2str(rd_err));
         return Qnil;
-    }
+    }else
+        fprintf(stderr, "%% Success closed\n");
     
     running = 0;
     conf->subscribed = 0;
