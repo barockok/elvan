@@ -7,6 +7,11 @@ require 'digest/md5'
 #
 LIBDIR      = RbConfig::CONFIG['libdir']
 INCLUDEDIR  = RbConfig::CONFIG['includedir']
+ARCH        = RbConfig::CONFIG["arch"]
+unless ARCH =~ /linux|darwin/
+  puts "Only available for linux and darwin"
+  exit(1)
+end
 # BASE_DIR = File.expand_path(File.dirname(__FILE__) + '/../../')
 #
 #
@@ -152,7 +157,14 @@ LIB_DIRS = [LIBDIR]
 # courtesty of:
 #   <http://blog.zachallett.com/howto-ruby-c-extension-with-a-static-library>
 # puts $LOCAL_LIBS
-$LOCAL_LIBS << File.join(librdkafka.path, 'lib', 'librdkafka.dylib')
+
+if ARCH =~ /darwin/
+  LIB_DIRS << File.join(librdkafka.path, 'lib')
+  $LOCAL_LIBS << '-lrdkafka'
+else
+  $LOCAL_LIBS << File.join(librdkafka.path, 'lib', 'librdkafka.a')
+end
+
 
 have_header('ruby/thread.h')
 have_header('ruby/intern.h')
