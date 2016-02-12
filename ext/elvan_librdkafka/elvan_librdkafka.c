@@ -221,7 +221,6 @@ static void helper__init_kafka_consumer(Elvan_Config_t* conf){
     if (topicPartitionList == NULL){
         rb_raise(rb_eRuntimeError, "TopicPartitionList can't be empty\n");
     }
-    conf->isInitialized = 1;
 }
 
 static void helper__msg_consume(rd_kafka_message_t *rkmessage, Elvan_Config_t *conf){
@@ -279,15 +278,20 @@ static VALUE helper__consumer_loop_stop(VALUE self){
 
     rd_err = rd_kafka_unsubscribe(rd_kafka_inst);
     if (rd_err){
-        rb_raise(rb_eRuntimeError, "%% Failed to close consumer: %s\n", rd_kafka_err2str(rd_err));
+        rb_raise(rb_eRuntimeError, "%% Failed to close unsubscribe: %s\n", rd_kafka_err2str(rd_err));
         return Qnil;
     }else
-        fprintf(stderr, "%% Consumer closed\n");
+        fprintf(stderr, "%% Success unsubscribe\n");
     
-    rd_kafka_consumer_close(rd_kafka_inst);
+    rd_err = rd_kafka_consumer_close(rd_kafka_inst);
+    if(rd_err){
+        rb_raise(rb_eRuntimeError, "%% Failed to close consumer: %s\n", rd_kafka_err2str(rd_err));
+        return Qnil;
+    }
+    
     running = 0;
     conf->subscribed = 0;
-
+  
     return Qnil;
 }
 
@@ -352,7 +356,6 @@ static VALUE elvan_consumer_allocate(VALUE klass) {
     conf->errstr[0]          = 0;
     conf->exit_eof           = 0;
     conf->wait_eof           = 0;
-    conf->isInitialized      = 0;
     conf->subscribed         = 0;
 
     obj = Data_Wrap_Struct(klass, 0, elvan_consumer_free, conf);
@@ -395,33 +398,19 @@ static VALUE elvan_consume(VALUE self){
 
     Data_Get_Struct(self, Elvan_Config_t, conf);
 
-    if(!conf->isInitialized){
-        helper__init_kafka_conf(conf);
-        helper__init_kafka_consumer(conf);
+    helper__init_kafka_conf(conf);
+    helper__init_kafka_consumer(conf);
+
+    if ((rd_err = rd_kafka_subscribe(rd_kafka_inst, topicPartitionList))) {
+        fprintf(stderr,
+                "%% Failed to start consuming topics: %s\n",
+                rd_kafka_err2str(rd_err));
+        rb_raise(rb_eRuntimeError, "Failed to start consuming topic %s", conf->group_id);
+        return Qnil;
     }
-
-    if(!conf->subscribed){
-        if ((rd_err = rd_kafka_subscribe(rd_kafka_inst, topicPartitionList))) {
-            fprintf(stderr,
-                    "%% Failed to start consuming topics: %s\n",
-                    rd_kafka_err2str(rd_err));
-            rb_raise(rb_eRuntimeError, "Failed to start consuming topic %s", conf->group_id);
-            return Qnil;
-        }else{
-            conf->subscribed = 1;
-        }
-    }else{
-        if((rd_err = rd_kafka_assign(rd_kafka_inst, topicPartitionList))){
-            fprintf(stderr,
-                    "%% Failed to assign topics partition: %s\n",
-                    rd_kafka_err2str(rd_err));
-            rb_raise(rb_eRuntimeError, "Failed to assign topics partition");
-            return Qnil;
-
-        };
-    }
-
+    conf->subscribed = 1;
     running = 1;
+
     return rb_ensure(helper__consumer_loop, self, helper__consumer_loop_stop, self);
 }
 static VALUE elvan_consume_stop(VALUE self){
