@@ -96,6 +96,17 @@ char** str_split(char* a_str, const char a_delim){
 }
 
 // Helper Methods
+static void helper__wait_kafka_destroy(rd_kafka_t *rk,
+                                       int wait_to,
+                                       int max_attempt){
+   
+    while (max_attempt-- > 0 && rd_kafka_wait_destroyed(wait_to) == -1)
+        fprintf(stderr, "Waiting for librdkafka to decommission\n");
+    
+    if (max_attempt <= 0)
+        fprintf(stderr, "librdkafka to decommissioned\n");
+}
+
 static void helper__print_partition_list (FILE *fp, int is_assigned,
                                           const rd_kafka_topic_partition_list_t
                                           *partitions, Elvan_Config_t* conf) {
@@ -337,6 +348,7 @@ static void elvan_consumer_free(void *p) {
 
     if (rd_kafka_inst != NULL) {
         rd_kafka_destroy(rd_kafka_inst);
+        helper__wait_kafka_destroy(rd_kafka_inst, 1000, 5);
     }
 
     free(conf->group_id);
