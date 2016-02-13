@@ -154,17 +154,16 @@ static void *helper__consumer_recv_msg(void *ptr){
 
 
 static void helper__parse_initialTopic_to_partitionList(Elvan_Config_t* conf){
-    if(!conf->initialTopics)
-        return ;
-
     topicPartitionList = rd_kafka_topic_partition_list_new(1);
-
-    for (int i = 0; *(conf->initialTopics + i); i++)
+    VALUE topicsCnt = rb_funcall(conf->initialTopics, rb_intern("size"), 0);
+    int topicsCntInt = FIX2INT(topicsCnt);
+  
+    for (int i = 0;  i < topicsCntInt ; i++)
     {
-        char *topic_name = strdup(*(conf->initialTopics + i));
+        VALUE Vtopic_name = rb_ary_entry(conf->initialTopics, i);
+        char *topic_name = StringValuePtr(Vtopic_name);
         rd_kafka_topic_partition_list_add(topicPartitionList, topic_name, -1);
     }
-
 }
 
 static void helper__init_kafka_conf(Elvan_Config_t *conf){
@@ -335,7 +334,6 @@ static VALUE elvan_consumer_allocate(VALUE klass) {
     Elvan_Config_t *conf;
 
     conf                     = ALLOC(Elvan_Config_t);
-    conf->initialTopics      = NULL;
     conf->errstr[0]          = 0;
     conf->exit_eof           = 0;
     conf->subscribed         = 0;
@@ -351,15 +349,13 @@ static VALUE elvan_initialize(VALUE self,
                               ){
 
     Elvan_Config_t *conf;
-    char *initialTopicPtr;
-
+  
     VALUE exit_eof = rb_hash_delete(consumer_conf, rb_str_new2("exit_eof"));
-    initialTopicPtr = StringValuePtr(initialTopic);
-
+  
     Data_Get_Struct(self, Elvan_Config_t, conf);
-
+    
+    conf->initialTopics        = initialTopic;
     conf->consumer_config_hash = consumer_conf;
-    conf->initialTopics        = str_split(initialTopicPtr, ',');
     conf->exit_eof             = FIX2INT(exit_eof) || 0;
     return self;
 }
