@@ -349,14 +349,18 @@ static VALUE elvan_initialize(VALUE self,
                               ){
 
     Elvan_Config_t *conf;
+    int exit_eof;
+    VALUE Vexit_eof;
   
-    VALUE exit_eof = rb_hash_delete(consumer_conf, rb_str_new2("exit_eof"));
-  
+    Vexit_eof = rb_hash_delete(consumer_conf, rb_str_new2("exit_eof"));
+    exit_eof = NIL_P(Vexit_eof) ? 0 : FIX2INT(Vexit_eof) ;
+    
     Data_Get_Struct(self, Elvan_Config_t, conf);
     
     conf->initialTopics        = initialTopic;
     conf->consumer_config_hash = consumer_conf;
-    conf->exit_eof             = FIX2INT(exit_eof) || 0;
+    conf->exit_eof             = exit_eof;
+    
     return self;
 }
 
