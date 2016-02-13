@@ -134,11 +134,8 @@ static void helper__retrive_initial_partitionList_position(Elvan_Config_t* conf)
 
     err = rd_kafka_position(rd_kafka_inst, topicPartitionList, 1000);
 
-    if (err) {
+    if (err)
         rb_raise(rb_eRuntimeError, "%% Failed to fetch offsets: %s\n", rd_kafka_err2str(err));
-    }else{
-        helper__print_partition_list(stderr, 1, topicPartitionList, conf);
-    }
 }
 
 static void helper__rebalance_cb (rd_kafka_t *rk,
