@@ -146,8 +146,12 @@ unless File.exists?(checkpoint)
     f.write("Cooked: #{Time.now}\n")
   end
 end
-
 librdkafka.activate
+
+# DEVELOPMENT ONLY
+# require 'ostruct'
+# librdkafka = OpenStruct.new(path: '/usr/local/Cellar/librdkafka/0.9.0.99')
+
 HEADER_DIRS = [INCLUDEDIR, File.join(librdkafka.path, 'include')]
 LIB_DIRS = [LIBDIR]
 
@@ -171,4 +175,5 @@ have_header('ruby/intern.h')
 have_header('ruby/version.h')
 have_func('rb_thread_blocking_region')
 have_func('rb_thread_call_without_gvl')
-create_makefile('elvan/elvan_librdkafka')
+
+create_makefile('elvan/elvan_rdkafka_consumer')

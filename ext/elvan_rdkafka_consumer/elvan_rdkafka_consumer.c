@@ -1,4 +1,4 @@
-#include "elvan_librdkafka.h"
+#include "elvan_rdkafka_consumer.h"
 
 static VALUE elvan_module;
 static int running;
@@ -418,7 +418,7 @@ static VALUE elvan_consume_stop(VALUE self){
     return self;
 }
 
-void Init_elvan_librdkafka() {
+void Init_elvan_rdkafka_consumer() {
     VALUE consumer_klass, rd_kafka_module;
     elvan_module = rb_define_module("Elvan");
     rd_kafka_module = rb_define_module_under(elvan_module, "RdKafka");
