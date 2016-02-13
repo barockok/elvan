@@ -6,29 +6,6 @@ static rd_kafka_t *rd_kafka_inst;
 static rd_kafka_conf_t* rd_kafka_conf;
 static rd_kafka_topic_partition_list_t *topicPartitionList;
 static int wait_eof;
-#define ELVAN_MAX_ERRSTR_LEN 512
-
-// Should we expect rb_thread_blocking_region to be present?
-// #define RB_THREAD_BLOCKING_REGION
-#undef RB_THREAD_BLOCKING_REGION
-
-typedef struct {
-    VALUE consumer_config_hash;
-    char *topic;
-    char errstr[512];
-    char *client_id;
-    char **initialTopics;
-
-    int exit_eof;
-    int isInitialized;
-    int isConnected;
-    int subscribed;
-
-    char *error;
-} Elvan_Config_t;
-
-
-
 
 // Utility Methods
 static void stop (int sig) {
@@ -375,12 +352,12 @@ static VALUE elvan_initialize(VALUE self,
 
     Elvan_Config_t *conf;
     char *initialTopicPtr;
-   
+
     VALUE exit_eof = rb_hash_delete(consumer_conf, rb_str_new2("exit_eof"));
     initialTopicPtr = StringValuePtr(initialTopic);
- 
+
     Data_Get_Struct(self, Elvan_Config_t, conf);
-    
+
     conf->consumer_config_hash = consumer_conf;
     conf->initialTopics        = str_split(initialTopicPtr, ',');
     conf->exit_eof             = FIX2INT(exit_eof) || 0;
