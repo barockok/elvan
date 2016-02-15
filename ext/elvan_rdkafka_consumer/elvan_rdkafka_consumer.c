@@ -22,54 +22,6 @@ static void logger(const rd_kafka_t *rk,
             (int)tv.tv_sec, (int)(tv.tv_usec / 1000),
             level, fac, rd_kafka_name(rk), buf);
 }
-
-char** str_split(char* a_str, const char a_delim){
-    char** result    = 0;
-    size_t count     = 0;
-    char* tmp        = a_str;
-    char* last_comma = 0;
-    char delim[2];
-    delim[0] = a_delim;
-    delim[1] = 0;
-
-    /* Count how many elements will be extracted. */
-    while (*tmp)
-    {
-        if (a_delim == *tmp)
-        {
-            count++;
-            last_comma = tmp;
-        }
-        tmp++;
-    }
-
-    /* Add space for trailing token. */
-    count += last_comma < (a_str + strlen(a_str) - 1);
-
-    /* Add space for terminating null string so caller
-     knows where the list of returned strings ends. */
-    count++;
-
-    result = malloc(sizeof(char*) * count);
-
-    if (result)
-    {
-        size_t idx  = 0;
-        char* token = strtok(a_str, delim);
-
-        while (token)
-        {
-            assert(idx < count);
-            *(result + idx++) = strdup(token);
-            token = strtok(0, delim);
-        }
-        assert(idx == count - 1);
-        *(result + idx) = 0;
-    }
-
-    return result;
-}
-
 // Helper Methods
 static void helper__wait_kafka_destroy(rd_kafka_t *rk,
                                        int wait_to,
@@ -157,7 +109,7 @@ static void helper__parse_initialTopic_to_partitionList(Elvan_Config_t* conf){
     topicPartitionList = rd_kafka_topic_partition_list_new(1);
     VALUE topicsCnt = rb_funcall(conf->initialTopics, rb_intern("size"), 0);
     int topicsCntInt = FIX2INT(topicsCnt);
-  
+
     for (int i = 0;  i < topicsCntInt ; i++)
     {
         VALUE Vtopic_name = rb_ary_entry(conf->initialTopics, i);
@@ -351,16 +303,16 @@ static VALUE elvan_initialize(VALUE self,
     Elvan_Config_t *conf;
     int exit_eof;
     VALUE Vexit_eof;
-  
+
     Vexit_eof = rb_hash_delete(consumer_conf, rb_str_new2("exit_eof"));
     exit_eof = NIL_P(Vexit_eof) ? 0 : FIX2INT(Vexit_eof) ;
-    
+
     Data_Get_Struct(self, Elvan_Config_t, conf);
-    
+
     conf->initialTopics        = initialTopic;
     conf->consumer_config_hash = consumer_conf;
     conf->exit_eof             = exit_eof;
-    
+
     return self;
 }
 
