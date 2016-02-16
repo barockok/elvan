@@ -4,7 +4,7 @@ static VALUE elvan_module;
 static int running;
 static rd_kafka_t *rd_kafka_inst;
 static rd_kafka_conf_t* rd_kafka_conf;
-static rd_kafka_topic_partition_list_t *topicPartitionList;
+static rd_kafka_topic_partition_list_t *topic_partitions;
 static int wait_eof;
 
 // Utility Methods
@@ -59,7 +59,7 @@ static void helper__print_partition_list (FILE *fp, int is_assigned,
 static void helper__retrive_initial_partitionList_position(Elvan_Config_t* conf){
     rd_kafka_resp_err_t err;
 
-    err = rd_kafka_position(rd_kafka_inst, topicPartitionList, 1000);
+    err = rd_kafka_position(rd_kafka_inst, topic_partitions, 1000);
 
     if (err)
         rb_raise(rb_eRuntimeError, "%% Failed to fetch offsets: %s\n", rd_kafka_err2str(err));
@@ -106,7 +106,7 @@ static void *helper__consumer_recv_msg(void *ptr){
 
 
 static void helper__parse_initialTopic_to_partitionList(Elvan_Config_t* conf){
-    topicPartitionList = rd_kafka_topic_partition_list_new(1);
+    topic_partitions = rd_kafka_topic_partition_list_new(1);
     VALUE topicsCnt = rb_funcall(conf->initialTopics, rb_intern("size"), 0);
     int topicsCntInt = FIX2INT(topicsCnt);
 
@@ -114,7 +114,7 @@ static void helper__parse_initialTopic_to_partitionList(Elvan_Config_t* conf){
     {
         VALUE Vtopic_name = rb_ary_entry(conf->initialTopics, i);
         char *topic_name = StringValuePtr(Vtopic_name);
-        rd_kafka_topic_partition_list_add(topicPartitionList, topic_name, -1);
+        rd_kafka_topic_partition_list_add(topic_partitions, topic_name, -1);
     }
 }
 
@@ -155,7 +155,7 @@ static void helper__init_kafka_consumer(Elvan_Config_t* conf){
     helper__parse_initialTopic_to_partitionList(conf);
     helper__retrive_initial_partitionList_position(conf);
 
-    if (topicPartitionList == NULL){
+    if (topic_partitions == NULL){
         rb_raise(rb_eRuntimeError, "TopicPartitionList can't be empty\n");
     }
 }
@@ -269,8 +269,8 @@ static void elvan_consumer_free(void *p) {
 
     Elvan_Config_t *conf = (Elvan_Config_t *)p;
 
-    if (topicPartitionList != NULL) {
-        rd_kafka_topic_partition_list_destroy(topicPartitionList);
+    if (topic_partitions != NULL) {
+        rd_kafka_topic_partition_list_destroy(topic_partitions);
     }
 
     if (rd_kafka_inst != NULL) {
@@ -328,7 +328,7 @@ static VALUE elvan_consume(VALUE self){
     VALUE VGroupId  = rb_hash_aref(conf->consumer_config_hash, rb_str_new2("group.id"));
     char *group_id = StringValuePtr(VGroupId);
 
-    if ((rd_err = rd_kafka_subscribe(rd_kafka_inst, topicPartitionList))) {
+    if ((rd_err = rd_kafka_subscribe(rd_kafka_inst, topic_partitions))) {
         fprintf(stderr,
                 "%% Failed to start consuming topics: %s\n",
                 rd_kafka_err2str(rd_err));
