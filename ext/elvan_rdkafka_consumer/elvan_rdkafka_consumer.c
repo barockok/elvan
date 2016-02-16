@@ -88,7 +88,7 @@ static void helper__rebalance_cb (rd_kafka_t *rk,
 
 static void *helper__consumer_recv_msg(void *ptr){
 		Elvan_Config_t *conf = (Elvan_Config_t *) ptr;
-    rd_kafka_message_t *rkmessage = rd_kafka_consumer_poll(conf->rd_kafka_inst, 500);
+    rd_kafka_message_t *rkmessage = rd_kafka_consumer_poll(conf->rd_kafka_inst, conf->message_poll_timeout);
     if ( rkmessage == NULL ) {
         if ( errno != ETIMEDOUT )
             fprintf(stderr, "%% Error: %s\n", rd_kafka_err2str( rd_kafka_errno2err(errno)));
@@ -292,11 +292,17 @@ static VALUE elvan_initialize(VALUE self,
                               ){
 
     Elvan_Config_t *conf;
-    int exit_eof;
-    VALUE Vexit_eof;
+    int exit_eof, message_poll_timeout, max_wait_brokers_down;
+    VALUE Vexit_eof, Vmax_wait_brokers_down, Vmessage_poll_timeout;
 
     Vexit_eof = rb_hash_delete(consumer_conf, rb_str_new2("exit_eof"));
     exit_eof = NIL_P(Vexit_eof) ? 0 : FIX2INT(Vexit_eof) ;
+
+    Vmax_wait_brokers_down = rb_hash_delete(consumer_conf, rb_str_new2("max_wait_brokers_down"));
+    max_wait_brokers_down = NIL_P(Vmax_wait_brokers_down) ? 5000 : FIX2INT(Vmax_wait_brokers_down);
+
+    Vmessage_poll_timeout = rb_hash_delete(consumer_conf, rb_str_new2("message_poll_timeout"));
+    message_poll_timeout = NIL_P(Vmessage_poll_timeout) ? 500 : FIX2INT(Vmessage_poll_timeout);
 
     Data_Get_Struct(self, Elvan_Config_t, conf);
 
@@ -305,6 +311,9 @@ static VALUE elvan_initialize(VALUE self,
     conf->exit_eof             = exit_eof;
     conf->running              = 0;
     conf->wait_eof             = 0;
+    conf->brokers_down         = 0;
+    conf->max_wait_brokers_down= max_wait_brokers_down;
+    conf->message_poll_timeout = message_poll_timeout;
 
     return self;
 }
